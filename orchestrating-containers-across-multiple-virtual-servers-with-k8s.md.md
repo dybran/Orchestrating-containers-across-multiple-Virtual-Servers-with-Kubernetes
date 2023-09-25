@@ -1,4 +1,4 @@
-## ORCHESTRATING CONTAINERS ACROSS MULTIPLE VIRTUAL SERVERS WITH KUBERNETES - KUBERNETES FROM GROUND UP - Part 1
+## ORCHESTRATING CONTAINERS ACROSS MULTIPLE VIRTUAL SERVERS WITH KUBERNETES- Part 1
 
 In this project, I will delve into industry tools designed for seamless production deployment.
 
@@ -51,11 +51,17 @@ At its core, container orchestration entails the automation of the complete cont
 
 Kubernetes emerges as a formidable tool designed explicitly for container orchestration, excelling when configured correctly.
 
+Read about every component in the [official documentation](https://kubernetes.io/docs/concepts/overview/components/).
+
+__Kubernetes architecture__
+
+![](./images/arch.PNG)
+
 __Kubernetes From-Ground-Up__
 
-For a better understanding of each aspect of spinning up a Kubernetes cluster, we will do it without any automated helpers. You will install each and every component manually from scratch and learn how to make them work together – we call this approach "K8s From-Ground-Up".
+For a better understanding of each aspect of spinning up a Kubernetes cluster, I will install each and every component manually from scratch.
 
-To successfully implement "K8s From-Ground-Up", the following and even more will be done by you as a K8s administrator:
+To successfully implement "K8s From-Ground-Up", the following and even more will be done as a K8s administrator:
 
 - Install and configure master (also known as control plane) node components and worker nodes.
 - Apply security settings across the entire cluster (i.e., encrypting the data in transit, and at rest)
