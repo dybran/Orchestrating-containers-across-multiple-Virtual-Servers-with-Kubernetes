@@ -71,3 +71,63 @@ To successfully implement "K8s From-Ground-Up", the following and even more will
 - Configure network plugins for the containers to communicate
 - Manage periodical upgrade of the cluster
 - Configure observability and auditing
+
+Tools to be used and expected result.
+- VM: AWS EC2
+- OS: Ubuntu 20.04 lts+
+- Docker Engine
+- kubectl console utility
+- cfssl and cfssljson utilities
+- Kubernetes cluster
+- 
+I will create 3 EC2 Instances, and in the end, I will have the following parts of the cluster properly configured:
+
+- One Master node/Control plane.
+- Two Worker Nodes
+- Configured SSL/TLS certificates for Kubernetes components to communicate securely
+- Configured Node Network
+- Configured Pod Network
+
+__SETTING UP THE KUBERNETES CLUSTER (MANUALLY)__
+
+__INSTALL CLIENT TOOLS__
+
+Spin up an EC2 Insstance and install some tools on the client workstation:
+
+__awscli__ – is a unified tool to manage your AWS services.
+
+__kubectl__ – this command line utility will be the main control tool to manage the K8s cluster.
+
+__cfssl__ – an open source toolkit for everything TLS/SSL from Cloudflare
+
+__cfssljson__ – a program, which takes the JSON output from the cfssl and writes certificates, keys, CSRs, and bundles to disk.
+
+__Install and configure AWS CLI__
+
+I need to create a user in my AWS console with programmatic access keys configured in AWS Identity and Access Management (IAM) then Configure AWS CLI to access all AWS services used.
+
+Generate access keys and store them in a safe place.
+
+On my local workstation download and install the latest version of AWS CLI.
+
+To configure the AWS CLI run:
+
+`$ aws configure` and follow the prompt.
+
+To verify run any __aws cli__ commands.
+
+`$ aws ec2 describe-vpcs`
+
+![](./images/a.PNG)
+
+and check if you can see VPC details.
+
+__Install kubectl__
+
+A Kubernetes cluster features a Web API capable of handling __HTTP/HTTPS__ requests. However, continually using curl to send commands can be cumbersome. To streamline the tasks of a Kubernetes administrator, the __kubectl__ command tool was created.
+
+This versatile tool simplifies interactions with Kubernetes, enabling administrators to effortlessly deploy applications, inspect and manage cluster resources, access logs and execute various administrative tasks.
+
+Download the binary
+
+`$ wget https://storage.googleapis.com/kubernetes-release/release/v1.21.0/bin/linux/amd64/kubectl`
