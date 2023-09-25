@@ -92,7 +92,7 @@ __SETTING UP THE KUBERNETES CLUSTER (MANUALLY)__
 
 __INSTALL CLIENT TOOLS__
 
-Spin up an EC2 Insstance and install some tools on the client workstation:
+Spin up an EC2 Instance and install some tools. This instance will be the client workstation:
 
 __awscli__ – is a unified tool to manage your AWS services.
 
@@ -108,11 +108,17 @@ I need to create a user in my AWS console with programmatic access keys configur
 
 Generate access keys and store them in a safe place.
 
-On my local workstation download and install the latest version of AWS CLI.
+On my local workstation download and install AWS CLI.
+
+`$ sudo apt update && sudo apt install awscli -y`
 
 To configure the AWS CLI run:
 
 `$ aws configure` and follow the prompt.
+
+![](./images/c.PNG)
+![](./images/c1.PNG)
+![](./images/c2.PNG)
 
 To verify run any __aws cli__ commands.
 
@@ -128,6 +134,28 @@ A Kubernetes cluster features a Web API capable of handling __HTTP/HTTPS__ reque
 
 This versatile tool simplifies interactions with Kubernetes, enabling administrators to effortlessly deploy applications, inspect and manage cluster resources, access logs and execute various administrative tasks.
 
+To setup kubectl we will refer to the [kubernetes documentation](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/#install-kubectl-binary-with-curl-on-linux).
+
 Download the binary
 
 `$ wget https://storage.googleapis.com/kubernetes-release/release/v1.21.0/bin/linux/amd64/kubectl`
+
+Make it executable
+
+`$ chmod +x kubectl`
+
+Move to the Bin directory
+
+`$ sudo mv kubectl /usr/local/bin/`
+
+Verify that kubectl version 1.21.0 or higher is installed:
+
+`$ kubectl version --client`
+
+![](./images/kk.PNG)
+
+__Install CFSSL and CFSSLJSON__
+
+__cfssl__ is an open source tool by __Cloudflare__ used to setup a [__Public Key Infrastructure__](https://en.wikipedia.org/wiki/Public_key_infrastructure). for generating, signing and bundling TLS certificates. In previous projects you have experienced the use of Letsencrypt for the similar use case. Here, cfssl will be configured as a Certificate Authority which will issue the certificates required to spin up a Kubernetes cluster.
+
+Download, install and verify successful installation of cfssl and cfssljson:
