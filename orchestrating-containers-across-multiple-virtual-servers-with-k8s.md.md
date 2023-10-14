@@ -159,3 +159,59 @@ __Install CFSSL and CFSSLJSON__
 __cfssl__ is an open source tool by __Cloudflare__ used to setup a [__Public Key Infrastructure__](https://en.wikipedia.org/wiki/Public_key_infrastructure). for generating, signing and bundling TLS certificates. In previous projects you have experienced the use of Letsencrypt for the similar use case. Here, cfssl will be configured as a Certificate Authority which will issue the certificates required to spin up a Kubernetes cluster.
 
 Download, install and verify successful installation of cfssl and cfssljson:
+
+`$ wget -q --show-progress --https-only --timestamping https://github.com/cloudflare/cfssl/releases/download/v1.6.3/cfssl_1.6.3_linux_amd64 https://github.com/cloudflare/cfssl/releases/download/v1.6.3/cfssljson_1.6.3_linux_amd64`
+
+`$ chmod +x cfssl_1.6.3_linux_amd64 cfssljson_1.6.3_linux_amd64`
+
+`$ sudo mv cfssl_1.6.3_linux_amd64 /usr/local/bin/cfssl`
+
+`$ sudo mv cfssljson_1.6.3_linux_amd64 /usr/local/bin/cfssljson`
+
+![](./images/gol.PNG)
+
+__AWS CLOUD RESOURCES FOR KUBERNETES CLUSTER__
+
+__Configure Network Infrastructure - Virtual Private Cloud (VPC)__
+
+Create a directory named __manual-k8s-cluster__
+
+Create a VPC and store the ID as a variable:
+
+`$ VPC_ID=$(aws ec2 create-vpc --cidr-block 172.31.0.0/16 --output text --query 'Vpc.VpcId')`
+
+Tag the VPC so that it is named
+
+`$ aws ec2 create-tags --resources ${VPC_ID} --tags Key=Name,Value=manual-k8s-cluster`
+
+![](./images/vpc1.PNG)
+![](./images/vpc.PNG)
+
+__Domain Name System – DNS__
+
+Enable DNS support for your VPC
+
+`$ aws ec2 modify-vpc-attribute --vpc-id ${VPC_ID} --enable-dns-support '{"Value": true}'`
+
+Enable DNS support for hostnames
+
+`$ aws ec2 modify-vpc-attribute --vpc-id ${VPC_ID} --enable-dns-hostnames '{"Value": true}'`
+
+AWS Region
+
+Set the required region
+
+`$ AWS_REGION=us-east-1`
+
+![](./images/support.PNG)
+
+__Dynamic Host Configuration Protocol – DHCP__
+
+__Configure DHCP Options Set__
+
+__Dynamic Host Configuration Protocol (DHCP)__ is a network management protocol used on Internet Protocol networks for automatically assigning IP addresses and other communication parameters to devices connected to the network using a client–server architecture.
+
+AWS automatically creates and associates a DHCP option set for your Amazon VPC upon creation and sets two options: domain-name-servers (defaults to AmazonProvidedDNS) and domain-name (defaults to the domain name for your set region). AmazonProvidedDNS is an Amazon Domain Name System (DNS) server, and this option enables DNS for instances to communicate using DNS names.
+
+By default EC2 instances have fully qualified names like ip-172-50-197-106.eu-central-1.compute.internal. But you can set your own configuration using an example below.
+
