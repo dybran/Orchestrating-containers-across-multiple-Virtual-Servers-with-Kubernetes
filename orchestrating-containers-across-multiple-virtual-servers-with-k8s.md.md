@@ -209,9 +209,635 @@ __Dynamic Host Configuration Protocol – DHCP__
 
 __Configure DHCP Options Set__
 
-__Dynamic Host Configuration Protocol (DHCP)__ is a network management protocol used on Internet Protocol networks for automatically assigning IP addresses and other communication parameters to devices connected to the network using a client–server architecture.
+__The Dynamic Host Configuration Protocol (DHCP)__ is a network management protocol employed in Internet Protocol networks. Its primary function is to autonomously allocate IP addresses and establish various communication parameters for devices linked to the network through a client-server architecture.
 
-AWS automatically creates and associates a DHCP option set for your Amazon VPC upon creation and sets two options: domain-name-servers (defaults to AmazonProvidedDNS) and domain-name (defaults to the domain name for your set region). AmazonProvidedDNS is an Amazon Domain Name System (DNS) server, and this option enables DNS for instances to communicate using DNS names.
+__AWS__ upon the initiation of __VPC__, automatically generates and associates a __DHCP__ option set. This option set contains two predefined settings: __domain-name-servers__, which defaults to __AmazonProvidedDNS__, and __domain-name__, which defaults to the domain name associated with your specified region. __AmazonProvidedDNS__ denotes an Amazon Domain Name System (DNS) server, facilitating DNS-based communication for instances.
 
-By default EC2 instances have fully qualified names like ip-172-50-197-106.eu-central-1.compute.internal. But you can set your own configuration using an example below.
+By default, Amazon Elastic Compute Cloud (EC2) instances are assigned fully qualified domain names, such as `ip-172-50-197-106.eu-central-1.compute.internal`. However, you can configure your own custom settings, as demonstrated in the example below.
 
+`$ DHCP_OPTION_SET_ID=$(aws ec2 create-dhcp-options --dhcp-configuration "Key=domain-name,Values=$AWS_REGION.compute.internal" "Key=domain-name-servers,Values=AmazonProvidedDNS" --output text --query 'DhcpOptions.DhcpOptionsId')`
+
+Tag the DHCP Option set
+
+`$ aws ec2 create-tags --resources ${DHCP_OPTION_SET_ID} --tags Key=Name,Value=manual-k8s-cluster`
+
+Associate the DHCP Option set with the VPC
+
+`$ aws ec2 associate-dhcp-options --dhcp-options-id ${DHCP_OPTION_SET_ID} --vpc-id ${VPC_ID}`
+
+![](./images/dhcp.PNG)
+
+__Subnet__
+
+Create and tag the Subnet
+
+`$ SUBNET_ID=$(aws ec2 create-subnet --vpc-id ${VPC_ID} --cidr-block 172.31.0.0/24 --output text --query 'Subnet.SubnetId')`
+
+`$ aws ec2 create-tags --resources ${SUBNET_ID} --tags Key=Name,Value=manual-k8s-cluster`
+
+__Internet Gateway – IGW__
+
+Create the Internet Gateway and attach it to the VPC
+
+`$ INTERNET_GATEWAY_ID=$(aws ec2 create-internet-gateway --output text --query 'InternetGateway.InternetGatewayId')`
+
+`$ aws ec2 create-tags --resources ${INTERNET_GATEWAY_ID} --tags Key=Name,Value=manual-k8s-cluster`
+
+Attah to VPC
+
+`$ aws ec2 attach-internet-gateway --internet-gateway-id ${INTERNET_GATEWAY_ID} --vpc-id ${VPC_ID}`
+
+![](./images/sub.PNG)
+
+__Route tables__
+
+Create route tables, associate the route table to subnet, and create a route to allow external traffic to the Internet through the Internet Gateway
+
+`$ ROUTE_TABLE_ID=$(aws ec2 create-route-table --vpc-id ${VPC_ID} --output text --query 'RouteTable.RouteTableId')`
+
+`$ aws ec2 create-tags --resources ${ROUTE_TABLE_ID} --tags Key=Name,Value=manual-k8s-cluster`
+
+`$ aws ec2 associate-route-table --route-table-id ${ROUTE_TABLE_ID} --subnet-id ${SUBNET_ID}`
+
+![](./images/asso.PNG)
+
+Create a route to allow external traffic to the Internet through the Internet Gateway
+
+`$ aws ec2 create-route --route-table-id ${ROUTE_TABLE_ID} --destination-cidr-block 0.0.0.0/0 --gateway-id ${INTERNET_GATEWAY_ID}`
+
+![](./images/qq.PNG)
+
+__Security Groups__
+
+Configure security groups
+
+Create the security group and store its ID in a variable
+
+`$ SECURITY_GROUP_ID=$(aws ec2 create-security-group --group-name manual-k8s-cluster --description "Kubernetes cluster security group" --vpc-id ${VPC_ID} --output text --query 'GroupId')`
+
+Create the NAME tag for the security group
+
+`$ aws ec2 create-tags --resources ${SECURITY_GROUP_ID} --tags Key=Name,Value=manual-k8s-cluster`
+
+Create Inbound traffic for all communication within the subnet to connect on ports used by the master node(s)
+
+`$ aws ec2 authorize-security-group-ingress --group-id ${SECURITY_GROUP_ID} --ip-permissions IpProtocol=tcp,FromPort=2379,ToPort=2380,IpRanges='[{CidrIp=172.31.0.0/24}]'`
+
+Create Inbound traffic for all communication within the subnet to connect on ports used by the worker nodes
+
+`$ aws ec2 authorize-security-group-ingress --group-id ${SECURITY_GROUP_ID} --ip-permissions IpProtocol=tcp,FromPort=30000,ToPort=32767,IpRanges='[{CidrIp=172.31.0.0/24}]'`
+
+Create inbound traffic to allow connections to the Kubernetes API Server (port 6443) listening on port 6443
+
+`$ aws ec2 authorize-security-group-ingress --group-id ${SECURITY_GROUP_ID} --protocol tcp --port 6443 --cidr 0.0.0.0/0`
+
+Create inbound SSH traffic from any source. In a production environment, restrict access exclusively to desired IPs or CIDR ranges for connection.
+
+`$ aws ec2 authorize-security-group-ingress --group-id ${SECURITY_GROUP_ID} --protocol tcp --port 22 --cidr 0.0.0.0/0`
+
+Create ICMP ingress for all types
+
+`$ aws ec2 authorize-security-group-ingress --group-id ${SECURITY_GROUP_ID} --protocol icmp --port -1 --cidr 0.0.0.0/0`
+
+![](./images/sg.PNG)
+
+__Network Load Balancer__
+
+Create a network Load balancer
+
+`$ LOAD_BALANCER_ARN=$(aws elbv2 create-load-balancer --name manual-k8s-cluster --subnets ${SUBNET_ID} --scheme internet-facing --type network --output text --query 'LoadBalancers[].LoadBalancerArn')`
+
+![](./images/nld.PNG)
+
+![](./images/lb1.PNG)
+
+__Tagret Group__
+
+Create a target group acknowledging its lack of defined criteria at this stage due to the absence of real targets. it will be __"unhealthy"__.
+
+`$ TARGET_GROUP_ARN=$(aws elbv2 create-target-group --name manual-k8s-cluster --protocol TCP --port 6443 --vpc-id ${VPC_ID} --target-type ip --output text --query 'TargetGroups[].TargetGroupArn')`
+
+![](./images/unh.PNG)
+
+Register targets: Similar to above, you will provide the IP addresses for registration purposes. These IP addresses will serve as targets when the nodes become available.
+
+`$ aws elbv2 register-targets --target-group-arn ${TARGET_GROUP_ARN} --targets Id=172.31.0.1{0,1,2}`
+
+![](./images/unh2.PNG)
+
+Create a listener to listen for requests and forward to the target nodes on TCP port 6443
+
+`$ aws elbv2 create-listener --load-balancer-arn ${LOAD_BALANCER_ARN} --protocol TCP --port 6443 --default-actions Type=forward,TargetGroupArn=${TARGET_GROUP_ARN} --output text --query 'Listeners[].ListenerArn'`
+
+![](./images/unh1.PNG)
+
+![](./images/lb2.PNG)
+
+
+__K8s Public Address__
+
+Get the Kubernetes Public address
+
+`$ KUBERNETES_PUBLIC_ADDRESS=$(aws elbv2 describe-load-balancers --load-balancer-arns ${LOAD_BALANCER_ARN} --output text --query 'LoadBalancers[].DNSName')`
+
+![](./images/kpa.PNG)
+
+__CREATE COMPUTE RESOURCES__
+
+Install __jq tool__
+
+__jq__ is a lightweight and flexible command-line tool for processing and manipulating JSON data. It is commonly used in Unix-like operating systems to filter, transform, and format JSON data from various sources, including files, APIs, and other data streams. jq provides a wide range of features for querying and manipulating JSON, making it a powerful tool for tasks like parsing JSON, extracting specific data, and creating new JSON structures.
+
+`$ sudo apt update && sudo apt install jq -y`
+
+![](./images/jq.PNG)
+
+__AMI__
+
+Get an image to create EC2 instances
+
+`$ IMAGE_ID=$(aws ec2 describe-images --owners 099720109477 --filters 'Name=root-device-type,Values=ebs' 'Name=architecture,Values=x86_64' 'Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*' | jq -r '.Images|sort_by(.Name)[-1]|.ImageId')`
+
+![](./images/ami.PNG)
+
+__SSH key-pair__
+
+Create SSH Key-Pair
+
+`$ mkdir -p ssh`
+
+`$ aws ec2 create-key-pair --key-name manual-k8s-cluster --output text --query 'KeyMaterial' > ssh/manual-k8s-cluster.id_rsa`
+
+`$ chmod 600 ssh/manual-k8s-cluster.id_rsa`
+
+![](./images/ssh.PNG)
+
+__EC2 Instances for Controle Plane (Master Nodes)__
+
+Create 3 Master nodes
+
+```
+for i in 0 1 2; do
+  instance_id=$(aws ec2 run-instances \
+    --associate-public-ip-address \
+    --image-id ${IMAGE_ID} \
+    --count 1 \
+    --key-name manual-k8s-cluster \
+    --security-group-ids ${SECURITY_GROUP_ID} \
+    --instance-type t2.micro \
+    --private-ip-address 172.31.0.1${i} \
+    --user-data "name=master-${i}" \
+    --subnet-id ${SUBNET_ID} \
+    --output text --query 'Instances[].InstanceId')
+  aws ec2 modify-instance-attribute \
+    --instance-id ${instance_id} \
+    --no-source-dest-check
+  aws ec2 create-tags \
+    --resources ${instance_id} \
+    --tags "Key=Name,Value=${NAME}-master-${i}"
+done
+```
+
+![](./images/master.PNG)
+
+![](./images/mas.PNG)
+
+__EC2 Instances for Worker Nodes__
+
+Create 3 worker nodes
+
+```
+for i in 0 1 2; do
+  instance_id=$(aws ec2 run-instances \
+    --associate-public-ip-address \
+    --image-id ${IMAGE_ID} \
+    --count 1 \
+    --key-name manual-k8s-cluster \
+    --security-group-ids ${SECURITY_GROUP_ID} \
+    --instance-type t2.micro \
+    --private-ip-address 172.31.0.2${i} \
+    --user-data "name=worker-${i}|pod-cidr=172.20.${i}.0/24" \
+    --subnet-id ${SUBNET_ID} \
+    --output text --query 'Instances[].InstanceId')
+  aws ec2 modify-instance-attribute \
+    --instance-id ${instance_id} \
+    --no-source-dest-check
+  aws ec2 create-tags \
+    --resources ${instance_id} \
+    --tags "Key=Name,Value=manual-k8s-cluster-worker-${i}"
+done
+```
+
+![](./images/work1.PNG)
+
+![](./images/work2.PNG)
+
+__PREPARE THE SELF-SIGNED CERTIFICATE AUTHORITY AND GENERATE TLS CERTIFICATES__
+
+The following components running on the Master node will require TLS certificates.
+
+- kube-controller-manager
+- kube-scheduler
+- etcd
+- kube-apiserver
+
+The following components running on the Worker nodes will require TLS certificates.
+
+- kubelet
+- kube-proxy
+
+Therefore, you will provision a __PKI Infrastructure__ using __cfssl__ which will have a Certificate Authority. The CA will then generate certificates for all the individual components.
+
+__Self-Signed Root Certificate Authority (CA)__
+
+Here, We will provision a CA that will be used to sign additional TLS certificates.
+
+Create a directory and cd into it
+
+`$ mkdir ca-authority && cd ca-authority`
+
+```
+{
+
+cat > ca-config.json <<EOF
+{
+  "signing": {
+    "default": {
+      "expiry": "8760h"
+    },
+    "profiles": {
+      "kubernetes": {
+        "usages": ["signing", "key encipherment", "server auth", "client auth"],
+        "expiry": "8760h"
+      }
+    }
+  }
+}
+EOF
+
+cat > ca-csr.json <<EOF
+{
+  "CN": "Kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "Kubernetes",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+
+}
+```
+
+![](./images/ca1.PNG)
+![](./images/ca2.PNG)
+![](./images/ca3.PNG)
+
+The 3 important files here are:
+
+- __ca.pem__ – The Root Certificate
+- __ca-key.pem__ – The Private Key
+- __ca.csr__ – The Certificate Signing Request
+
+__Generating TLS Certificates For Client and Server__
+
+We will need to provision Client/Server certificates for all the components. We must have encrypted communication within the cluster. Therefore, the server here are the master nodes running the api-server component. While the client is every other component that needs to communicate with the api-server.
+
+Now we have a certificate for the Root __CA__, we can then begin to request more certificates which the different Kubernetes components, i.e. clients and server, will use to have encrypted communication.
+
+Remember, the clients here refer to every other component that will communicate with the api-server. These are:
+
+- kube-controller-manager
+- kube-scheduler
+- etcd
+- kubelet
+- kube-proxy
+- Kubernetes Admin User
+
+Let us begin with the Kubernetes API-Server Certificate and Private Key
+
+The certificate for the Api-server must have __IP addresses, DNS names__, and a __Load Balancer address__ included. Otherwise, we will have a lot of difficulties connecting to the api-server.
+
+Generate the Certificate Signing Request (CSR), Private Key and the Certificate for the Kubernetes Master Nodes.
+```
+{
+cat > master-kubernetes-csr.json <<EOF
+{
+  "CN": "kubernetes",
+   "hosts": [
+   "127.0.0.1",
+   "172.31.0.10",
+   "172.31.0.11",
+   "172.31.0.12",
+   "ip-172-31-0-10",
+   "ip-172-31-0-11",
+   "ip-172-31-0-12",
+   "ip-172-31-0-10.${AWS_REGION}.compute.internal",
+   "ip-172-31-0-11.${AWS_REGION}.compute.internal",
+   "ip-172-31-0-12.${AWS_REGION}.compute.internal",
+   "${KUBERNETES_PUBLIC_ADDRESS}",
+   "kubernetes",
+   "kubernetes.default",
+   "kubernetes.default.svc",
+   "kubernetes.default.svc.cluster",
+   "kubernetes.default.svc.cluster.local"
+  ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "Kubernetes",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  master-kubernetes-csr.json | cfssljson -bare master-kubernetes
+}
+```
+![](./images/ac1.PNG)
+![](./images/ac2.PNG)
+
+Creating the other certificates: for the following Kubernetes components:
+
+- Scheduler Client Certificate
+- Kube Proxy Client Certificate
+- Controller Manager Client Certificate
+- Kubelet Client Certificates
+- K8s admin user Client Certificate
+
+__kube-scheduler Client - Certificate and Private Key__
+
+```
+{
+
+cat > kube-scheduler-csr.json <<EOF
+{
+  "CN": "system:kube-scheduler",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "system:kube-scheduler",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  kube-scheduler-csr.json | cfssljson -bare kube-scheduler
+
+}
+```
+
+__kube-proxy Client - Certificate and Private Key__
+
+```
+{
+
+cat > kube-proxy-csr.json <<EOF
+{
+  "CN": "system:kube-proxy",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "system:node-proxier",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  kube-proxy-csr.json | cfssljson -bare kube-proxy
+
+}
+```
+__kube-controller-manager - Client Certificate and Private Key__
+
+```
+{
+cat > kube-controller-manager-csr.json <<EOF
+{
+  "CN": "system:kube-controller-manager",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "system:kube-controller-manager",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  kube-controller-manager-csr.json | cfssljson -bare kube-controller-manager
+
+}
+```
+__kubelet Client - Certificate and Private Key__
+
+Similar to how we configured the api-server's certificate, Kubernetes requires that the hostname of each worker node is included in the client certificate.
+
+Also, Kubernetes uses a special-purpose authorization mode called Node Authorizer, that specifically authorizes API requests made by kubelet services. In order to be authorized by the Node Authorizer, kubelets must use a credential that identifies them as being in the system:nodes group, with a username of system:node:<nodeName>. Notice the "CN": "system:node:${instance_hostname}", in the below code.
+
+Therefore, the certificate to be created must comply to these requirements. In the below example, there are 3 worker nodes, hence we will use bash to loop through a list of the worker nodes’ hostnames, and based on each index, the respective Certificate Signing Request (CSR), private key and client certificates will be generated.
+
+```
+for i in 0 1 2; do
+  instance="manual-k8s-cluster-worker-${i}"
+  instance_hostname="ip-172-31-0-2${i}"
+  cat > ${instance}-csr.json <<EOF
+{
+  "CN": "system:node:${instance_hostname}",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "system:nodes",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+  external_ip=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=${instance}" \
+    --output text --query 'Reservations[].Instances[].PublicIpAddress')
+
+  internal_ip=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=${instance}" \
+    --output text --query 'Reservations[].Instances[].PrivateIpAddress')
+
+  cfssl gencert \
+    -ca=ca.pem \
+    -ca-key=ca-key.pem \
+    -config=ca-config.json \
+    -hostname=${instance_hostname},${external_ip},${internal_ip} \
+    -profile=kubernetes \
+    manual-k8s-cluster-worker-${i}-csr.json | cfssljson -bare manual-k8s-cluster-worker-${i}
+done
+```
+
+__kubernetes admin user - Client Certificate and Private Key__
+
+```
+{
+cat > admin-csr.json <<EOF
+{
+  "CN": "admin",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "system:masters",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  admin-csr.json | cfssljson -bare admin
+}
+```
+__Token Controller - certificate and private key__
+
+We need to generate certificate and private key for the __Token Controller__ - a part of the Kubernetes Controller Manager.
+
+kube-controller-manager responsible for generating and signing service account tokens which are used by pods or other resources to establish connectivity to the api-server.
+
+```
+{
+
+cat > service-account-csr.json <<EOF
+{
+  "CN": "service-accounts",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UK",
+      "L": "England",
+      "O": "Kubernetes",
+      "OU": "Dybran-projects",
+      "ST": "London"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  service-account-csr.json | cfssljson -bare service-account
+}
+```
+![](./images/all.PNG)
+
+__DISTRIBUTING THE CLIENT AND SERVER CERTIFICATES__
+
+Now it is time to start sending all the client and server certificates to their respective instances.
+
+Let us begin with the worker nodes:
+
+Copy these files securely to the worker nodes using scp utility
+
+- Root CA certificate – ca.pem
+- X509 Certificate for each worker node
+- Private Key of the certificate for each worker node
+
+```
+for i in 0 1 2; do
+  instance="manual-k8s-cluster-worker-${i}"
+  external_ip=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=${instance}" \
+    --output text --query 'Reservations[].Instances[].PublicIpAddress')
+  scp -i ../ssh/manual-k8s-cluster.id_rsa \
+    ca.pem ${instance}-key.pem ${instance}.pem ubuntu@${external_ip}:~/; \
+done
+```
+![](./images/dist.PNG)
+
+__Master or Controller node: – Note that only the api-server related files will be sent over to the master nodes.__
+
+```
+for i in 0 1 2; do
+instance="manual-k8s-cluster-master-${i}" \
+  external_ip=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=${instance}" \
+    --output text --query 'Reservations[].Instances[].PublicIpAddress')
+  scp -i ../ssh/manual-k8s-cluster.id_rsa \
+    ca.pem ca-key.pem service-account-key.pem service-account.pem \
+    master-kubernetes.pem master-kubernetes-key.pem ubuntu@${external_ip}:~/;
+done
+```
