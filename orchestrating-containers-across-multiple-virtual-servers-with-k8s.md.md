@@ -1027,7 +1027,7 @@ Generate the __kubeconfig file for the admin user__
 Distribute the files to their respective servers, using scp and a for loop like we have done previously. This is a test to validate that you understand which component must go to which node.
 
 
-worker nodes
+__For Worker nodes__
 
 ```
 for i in 0 1 2; do
@@ -1042,7 +1042,7 @@ done
 ![](./images/5.PNG)
 
 
-Master nodes
+__For Master nodes__
 
 ```
 for i in 0 1 2; do
