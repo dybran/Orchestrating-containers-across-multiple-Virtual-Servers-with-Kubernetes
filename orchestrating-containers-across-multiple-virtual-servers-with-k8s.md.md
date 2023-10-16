@@ -862,7 +862,7 @@ __Generate the kubelet kubeconfig file__
 
 For each of the nodes running the kubelet component, it is very important that the client certificate configured for that node is used to generate the kubeconfig. This is because each certificate has the node’s DNS name or IP Address configured at the time the certificate was generated. It will also ensure that the appropriate authorization is applied to that node through the Node Authorizer
 
-Below command must be run in the directory where all the certificates were generated.
+Run the code below in the directory where all the certificates were generated.
 
 ```
 for i in 0 1 2; do
@@ -1024,7 +1024,7 @@ Generate the __kubeconfig file for the admin user__
 
 ![](./images/4.PNG)
 
-Distribute the files to their respective servers, using scp and a for loop like we have done previously. This is a test to validate that you understand which component must go to which node.
+Distribute the files to their respective servers using scp and a for loop.
 
 
 __For Worker nodes__
@@ -1060,3 +1060,84 @@ done
 
 __PREPARE THE ETCD DATABASE FOR ENCRYPTION AT REST__
 
+__Prepare the etcd database for encryption at rest.__
+
+Kubernetes uses etcd (A distributed key value store) to store variety of data which includes the cluster state, application configurations, and secrets. By default, the data that is being persisted to the disk is not encrypted. Any attacker that is able to gain access to this database can exploit the cluster since the data is stored in plain text. Hence, it is a security risk for Kubernetes that needs to be addressed.
+
+To mitigate this risk, we must prepare to encrypt etcd at rest. __"At rest"__ means data that is stored and persists on a disk. Anytime you hear __"in-flight"__ or __"in transit"__ refers to data that is being transferred over the network. __"In-flight"__ encryption is done through TLS.
+
+__Generate the encryption key and encode it using "base64"__
+
+`$ ETCD_ENCRYPTION_KEY=$(head -c 64 /dev/urandom | base64)`
+
+See the output
+
+`$ echo $ETCD_ENCRYPTION`
+
+![](./images/ssa.PNG)
+
+```
+cat > encryption-config.yaml <<EOF
+kind: EncryptionConfig
+apiVersion: v1
+resources:
+  - resources:
+      - secrets
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: ${ETCD_ENCRYPTION_KEY}
+      - identity: {}
+EOF
+```
+![](./images/enc.PNG)
+
+Send the encryption file to the Controller nodes using __scp__ and a __for__ loop
+
+```
+for i in 0 1 2; do
+instance="manual-k8s-cluster-master-${i}" \
+  external_ip=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=${instance}" \
+    --output text --query 'Reservations[].Instances[].PublicIpAddress')
+  scp -i ../ssh/manual-k8s-cluster.id_rsa \
+    encryption-config.yaml ubuntu@${external_ip}:~/;
+done
+```
+![](./images/qqww.PNG)
+
+__Bootstrap "etcd" cluster__
+
+The primary purpose of the etcd component is to store the state of the cluster. This is because Kubernetes itself is stateless. Therefore, all its stateful data will persist in etcd. Since Kubernetes is a distributed system – it needs a distributed storage to keep persistent data in it. etcd is a highly-available key value store that fits the purpose. All K8s cluster configurations are stored in a form of key value pairs in etcd, it also stores the actual and desired states of the cluster. etcd cluster is intelligent enough to watch for changes made on one instance and almost instantly replicate those changes to the rest of the instances, so all of them will be always reconciled.
+
+__SSH into the controller server__
+
+SSH into the various Master controllers on seperate terminals. Make sure the __awscli__ is configured.
+
+__Master 1__
+
+```
+master_1_ip=$(aws ec2 describe-instances \
+--filters "Name=tag:Name,Values=manual-k8s-cluster-master-0" \
+--output text --query 'Reservations[].Instances[].PublicIpAddress')
+ssh -i manual-k8s-cluster.id_rsa ubuntu@${master_1_ip}
+```
+
+__Master 2__
+
+```
+master_2_ip=$(aws ec2 describe-instances \
+--filters "Name=tag:Name,Values=manual-k8s-cluster-master-1" \
+--output text --query 'Reservations[].Instances[].PublicIpAddress')
+ssh -i manual-k8s-cluster.id_rsa ubuntu@${master_2_ip}
+```
+
+__Master 3__
+
+```
+master_3_ip=$(aws ec2 describe-instances \
+--filters "Name=tag:Name,Values=manual-k8s-cluster-master-2" \
+--output text --query 'Reservations[].Instances[].PublicIpAddress')
+ssh -i manual-k8s-cluster.id_rsa ubuntu@${master_3_ip}
+```
