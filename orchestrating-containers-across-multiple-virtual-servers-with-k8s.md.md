@@ -1068,11 +1068,13 @@ To mitigate this risk, we must prepare to encrypt etcd at rest. __"At rest"__ me
 
 __Generate the encryption key and encode it using "base64"__
 
-`$ ETCD_ENCRYPTION_KEY=$(head -c 64 /dev/urandom | base64)`
+Kubernetes uses a 32-byte (256-bit) encryption key for etcd encryption. Etcd is a distributed key-value store used by Kubernetes to store configuration data and other distributed system information securely. The 32-byte key is typically used for encryption in etcd to ensure the confidentiality and integrity of the stored data. This key is generated and managed as part of the Kubernetes cluster's configuration for security purposes.
+
+`$ ETCD_ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)`
 
 See the output
 
-`$ echo $ETCD_ENCRYPTION`
+`$ echo $ETCD_ENCRYPTION_KEY`
 
 ![](./images/ssa.PNG)
 
@@ -1101,7 +1103,7 @@ instance="manual-k8s-cluster-master-${i}" \
   external_ip=$(aws ec2 describe-instances \
     --filters "Name=tag:Name,Values=${instance}" \
     --output text --query 'Reservations[].Instances[].PublicIpAddress')
-  scp -i ../ssh/manual-k8s-cluster.id_rsa \
+  scp -i ssh/manual-k8s-cluster.id_rsa \
     encryption-config.yaml ubuntu@${external_ip}:~/;
 done
 ```
@@ -1190,9 +1192,9 @@ $ ETCD_NAME=$(curl -s http://169.254.169.254/latest/user-data/ \
 echo ${ETCD_NAME}
 ```
 
-Create the __etcd.service systemd unit file__:
+Create the __etcd.service systemd unit file__
 
-Rea the documentation [here](https://www.bookstack.cn/read/etcd-3.2.17-en/717bafd59fa87192.md).
+Read the documentation [here](https://www.bookstack.cn/read/etcd-3.2.17-en/717bafd59fa87192.md).
 
 ```
 cat <<EOF | sudo tee /etc/systemd/system/etcd.service
