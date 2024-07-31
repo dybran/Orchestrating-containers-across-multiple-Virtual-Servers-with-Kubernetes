@@ -82,8 +82,8 @@ Tools to be used and expected result.
 - 
 I will create 3 EC2 Instances, and in the end, I will have the following parts of the cluster properly configured:
 
-- One Master node/Control plane.
-- Two Worker Nodes
+- three Master node/Control plane.
+- three Worker Nodes
 - Configured SSL/TLS certificates for Kubernetes components to communicate securely
 - Configured Node Network
 - Configured Pod Network
